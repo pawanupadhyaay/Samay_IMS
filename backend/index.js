@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5000;
 console.log("Environment Variables: ", process.env);
 
 const corsOptions = {
-  origin: ["https://samay.atraski.com", "http://localhost:5173"],
+  origin: ["https://samaywatch.in"],
   allowedHeaders: ["Content-Type", "Authorization", "x-auth-token"],
   exposedHeaders: ["x-auth-token"],
   methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
