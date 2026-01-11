@@ -1,0 +1,69 @@
+.main_wraper {
+  display: flex;
+}
+
+.appBorder {
+  border: 0.0625rem solid #ffffff1a;
+}
+
+.nav_wraper {
+  width: 20%;
+  height: 100vh;
+}
+
+.continar_wraper {
+  width: 80%;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 0 2em;
+}
+
+.continar {
+  height: fit-content;
+  padding: 3em 0;
+}
+
+.footer_wraper {
+  width: 100%;
+  height: fit-content;
+}
+
+.navOpen {
+  height: 95vh;
+  transition: all 0.5s ease-in-out;
+}
+
+.navClose {
+  height: 0vh;
+  transition: all 0.5s ease-in-out;
+}
+
+/* transition animation */
+
+.slide-in {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  transform-origin: bottom;
+  z-index: 10;
+  /* background-color: #111111; */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(90px) saturate(180%);
+  background-color: rgba(18, 18, 18, 0.78);
+}
+
+.slide-out {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  transform-origin: top;
+  z-index: 10;
+  /* background-color: #111111; */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(90px) saturate(180%);
+  background-color: rgba(18, 18, 18, 0.78);
+}

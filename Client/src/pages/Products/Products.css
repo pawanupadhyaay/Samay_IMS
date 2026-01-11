@@ -1,0 +1,53 @@
+/* Product Images Section Styles */
+.product-images-container {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  
+  /* Styling for images */
+  .product-images-container img {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+  
+  /* Add Image Button Styles */
+  .add-image-button {
+    background-color: #1e40af;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    min-width: 200px;  /* Minimum width for consistency */
+    max-width: 200px;  /* Maximum width for consistency */
+    width: 100%;       /* Ensures it spans available space */
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: all 0.3s ease;  /* Smooth transition on hover */
+  }
+  
+  /* Hover Effect for the Add Image Button */
+  .add-image-button:hover {
+    background-color: #1c3d80;
+  }
+  
+  /* Responsive Styling for Images and Button */
+  @media screen and (max-width: 750px) {
+    .product-images-container {
+      justify-content: center;  /* Center images for small screens */
+    }
+  
+    .add-image-button {
+      min-width: 150px;
+      max-width: 150px;
+    }
+  }
+  

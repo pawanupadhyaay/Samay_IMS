@@ -1,0 +1,10 @@
+{
+  "name": "Inventory  Management- Development",
+  "db": {
+    "uri": "mongodb://localhost:27017/InventryManagement"
+  },
+  "mail": {
+    "host": "sakthivelt1602@gmail.com",
+    "password": "patf lhqp hyvc evrx"
+  }
+}
