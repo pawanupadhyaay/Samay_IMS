@@ -1,17 +1,21 @@
-import React, { useState } from "react";
-import { NavLink } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import "./NavItem.css";
 
 function NavItem({ name, Icon, path, handleNav }) {
   const [isPlay, setIsPlay] = useState(false);
+  const location = useLocation();
   const iconStyle = "w-[30px] h-[30px]"; // ✅ Make size equal for all icons
+
+  // Update isPlay based on current location (outside of render)
+  useEffect(() => {
+    setIsPlay(location.pathname === path);
+  }, [location.pathname, path]);
 
   return (
     <NavLink
       to={path}
-      className={({ isActive }) => {
-        setIsPlay(isActive);
-      }}
+      className={() => ""}
       onClick={handleNav}
     >
       <div className="item_wraper xl:p-[1.5rem] md:p-[1rem] p-[1.5rem] flex items-center cursor-pointer">

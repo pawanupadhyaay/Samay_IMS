@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
@@ -7,6 +7,7 @@ const BASE_URL = import.meta.env.VITE_API_URL;
 
 function History() {
   const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filterBrand, setFilterBrand] = useState("");
   const [filterUser, setFilterUser] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -19,6 +20,7 @@ function History() {
   }, []);
 
   async function fetchHistory() {
+    setLoading(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -30,54 +32,71 @@ function History() {
         headers: { "x-auth-token": token },
       });
 
-      if (response.data && response.data.success !== undefined) {
-        // Success response with data (empty array if no history)
-        setHistory(response.data.data || []);
-        if (!response.data.data || response.data.data.length === 0) {
-          console.log("No history data available");
-        }
+      // Check if response is successful
+      if (response.data && response.data.success === true) {
+        // Success response with data
+        const historyData = response.data.data || [];
+        setHistory(historyData);
       } else {
-        // Handle unexpected response format
-        console.error("Unexpected response format:", response.data);
         setHistory([]);
       }
     } catch (error) {
       console.error("Error fetching history:", error.response?.data || error.message);
-      if (error.response?.status === 404 || error.response?.status === 403) {
-        toast.error("History route not found or access denied");
+      if (error.response?.status === 404) {
+        toast.error("History route not found");
+      } else if (error.response?.status === 403) {
+        toast.error("Access denied");
+      } else if (error.response?.status === 401) {
+        toast.error("Authentication failed");
       } else {
         toast.error("Failed to fetch history");
       }
       setHistory([]);
+    } finally {
+      setLoading(false);
     }
   }
 
-  const getFieldValue = (product, fieldPath) => {
-    const parts = fieldPath.split(".");
-    let value = product;
-    for (let part of parts) {
-      value = value?.[part];
-    }
-    return value ?? "N/A";
-  };
+  // Memoize unique brands to avoid recalculating on every render
+  const uniqueBrands = useMemo(() => {
+    return [...new Set(
+      history
+        .map(h => h.product?.brand?.trim())
+        .filter(brand => brand && brand !== "")
+    )];
+  }, [history]);
 
-  const filteredHistory = history.filter((record) => {
-    const matchBrand = filterBrand ? record.product?.brand === filterBrand : true;
-    const matchUser = filterUser ? record.modifiedBy === filterUser : true;
-    const matchSearch = searchInput
-      ? (record.product?.brand?.toLowerCase().includes(searchInput.toLowerCase()) ||
-         record.product?.sku?.toLowerCase().includes(searchInput.toLowerCase()) ||
-         record.modifiedBy?.toLowerCase().includes(searchInput.toLowerCase()))
-      : true;
+  // Memoize unique users to avoid recalculating on every render
+  const uniqueUsers = useMemo(() => {
+    return [...new Set(history.map(h => h.modifiedBy).filter(Boolean))];
+  }, [history]);
 
-    return matchBrand && matchUser && matchSearch;
-  });
+  // Memoize filtered history to avoid recalculating on every render
+  const filteredHistory = useMemo(() => {
+    if (!history || history.length === 0) return [];
+    
+    const searchLower = searchInput.toLowerCase();
+    return history.filter((record) => {
+      const matchBrand = filterBrand ? record.product?.brand === filterBrand : true;
+      const matchUser = filterUser ? record.modifiedBy === filterUser : true;
+      const matchSearch = searchInput
+        ? (record.product?.brand?.toLowerCase().includes(searchLower) ||
+           record.product?.sku?.toLowerCase().includes(searchLower) ||
+           record.modifiedBy?.toLowerCase().includes(searchLower))
+        : true;
 
-  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
-  const currentItems = filteredHistory.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+      return matchBrand && matchUser && matchSearch;
+    });
+  }, [history, filterBrand, filterUser, searchInput]);
+
+  // Memoize pagination calculations
+  const totalPages = useMemo(() => Math.ceil(filteredHistory.length / itemsPerPage), [filteredHistory.length, itemsPerPage]);
+  const currentItems = useMemo(() => {
+    return filteredHistory.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [filteredHistory, currentPage, itemsPerPage]);
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -91,6 +110,18 @@ function History() {
         Product Modification History
       </h2>
 
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-3">
+            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="text-white text-sm">Loading history...</p>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* 🔍 Search + Filters */}
       <div className="flex flex-wrap gap-4 mb-6 items-center">
         <input
@@ -113,11 +144,7 @@ function History() {
           className="px-4 py-2 rounded-lg bg-black text-white border border-gray-700"
         >
           <option value="">All Brands</option>
-          {[...new Set(
-            history
-              .map(h => h.product?.brand?.trim())
-              .filter(brand => brand && brand !== "")
-          )].map((brand, i) => (
+          {uniqueBrands.map((brand, i) => (
             <option key={i} value={brand}>{brand}</option>
           ))}
         </select>
@@ -131,7 +158,7 @@ function History() {
           className="px-4 py-2 rounded-lg bg-black text-white border border-gray-700"
         >
           <option value="">All Users</option>
-          {[...new Set(history.map(h => h.modifiedBy))].map((user, i) => (
+          {uniqueUsers.map((user, i) => (
             <option key={i} value={user}>{user}</option>
           ))}
         </select>
@@ -209,6 +236,8 @@ function History() {
             Next
           </button>
         </div>
+      )}
+        </>
       )}
     </div>
   );

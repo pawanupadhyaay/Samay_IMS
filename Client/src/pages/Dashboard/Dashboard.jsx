@@ -173,6 +173,7 @@ const handleBrandChange = (event) => {
             value={searchInput}
             setValue={setSearchInput}
             icon={SearchIcon}
+            idName="searchInput"
           />
         </div>
       </div>

@@ -128,40 +128,24 @@ export function EditProduct({ id }) {
 
     setIsSaving(true);
     try {
-      // Optimistically update Redux store immediately
-      dispatch(updateProductInStore(id, {
-        ...updatedData,
-        metafields: updatedData.metafields,
-        images: updatedData.images,
-        image: updatedData.image,
-      }));
-
       // Close dialog immediately for better UX
       setIsOpen(false);
       toast.success("Product updated successfully!");
-
-      // Update in background (don't await - let it happen async)
+      
+      // Update product in background (non-blocking)
       updateProduct(id, updatedData)
         .then((response) => {
-          // Backend response structure: { success: true, data: updatedProduct }
-          // response is already response.data from axios, so response.data is the actual product
-          if (response && response.success && response.data) {
-            const updatedProduct = response.data;
-            // Update Redux store with backend response (includes updated images array)
-            dispatch(updateProductInStore(id, {
-              ...updatedProduct,
-              // Ensure images array is properly included from backend response
-              images: updatedProduct.images || [],
-              metafields: updatedProduct.metafields || updatedData.metafields,
-            }));
+          if (response && response.success) {
+            // Always refetch products to ensure complete, accurate data (in background)
+            fetchProducts(dispatch);
           } else {
-            // If response doesn't have expected structure, refetch to sync
+            // Refetch to sync if response unexpected
             fetchProducts(dispatch);
           }
         })
         .catch((error) => {
           console.error("Error updating product:", error);
-          // Revert: refetch original data if update fails
+          // Refetch to sync even on error
           fetchProducts(dispatch);
           toast.error(error.message || error.response?.data?.details || "Failed to update product");
         })
@@ -172,7 +156,7 @@ export function EditProduct({ id }) {
       console.error("Error updating product:", error);
       toast.error(error.message || error.response?.data?.details || "Failed to update product");
       setIsSaving(false);
-      // Revert on error
+      // Refetch to ensure data is in sync
       fetchProducts(dispatch);
     }
   };

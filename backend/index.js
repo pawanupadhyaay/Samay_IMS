@@ -50,8 +50,9 @@ app.get("/", (req, res) => {
 });
 
 app.use("/auth", authRouter);
+// ✅ IMPORTANT: Mount history router BEFORE products router so /products/history is matched first
+app.use("/products/history", adminAuth, historyRouter);
 app.use("/products", adminAuth, productRouter);
-app.use("/products/history", adminAuth, historyRouter); // Now the history route is available under `/products/history`
 
 app.use((req, res) => {
   res.status(404).send({ error: "Route not found" });

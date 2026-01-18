@@ -5,8 +5,6 @@ const { upload } = require("../../utils/fileUpload");
 const { Product, validateProduct } = require("../../DB/products");
 const History = require("../../DB/history"); 
 const { adminAuth } = require("../../middleware/auth");
-const historyRouter = require("./historyRoutes"); // Adjust path as necessary
-router.use("/", historyRouter); // Now the history route is available under `/products/history`
 
 // Removed History route logic as it is handled in historyRoutes.js
 
@@ -25,7 +23,11 @@ const handleSuccess = (res, statusCode, data) => {
 router.get("/", async (req, res) => {
   
   try {
-    const data = await Product.find({}).select({ user: 0 });
+    // Use lean() for faster queries - returns plain JS objects
+    // Only select fields we need (excluding user field)
+    const data = await Product.find({})
+      .select({ user: 0 })
+      .lean(); // Faster - returns plain JavaScript objects
 
     if (!data || data.length === 0) {
       return handleSuccess(res, 200, []);
