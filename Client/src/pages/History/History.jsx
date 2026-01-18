@@ -30,14 +30,25 @@ function History() {
         headers: { "x-auth-token": token },
       });
 
-      if (response.data.success) {
-        setHistory(response.data.data);
+      if (response.data && response.data.success !== undefined) {
+        // Success response with data (empty array if no history)
+        setHistory(response.data.data || []);
+        if (!response.data.data || response.data.data.length === 0) {
+          console.log("No history data available");
+        }
       } else {
-        toast.error("No history data found");
+        // Handle unexpected response format
+        console.error("Unexpected response format:", response.data);
+        setHistory([]);
       }
     } catch (error) {
-      toast.error("Failed to fetch history");
-      console.error("Error fetching history:", error.response || error.message);
+      console.error("Error fetching history:", error.response?.data || error.message);
+      if (error.response?.status === 404 || error.response?.status === 403) {
+        toast.error("History route not found or access denied");
+      } else {
+        toast.error("Failed to fetch history");
+      }
+      setHistory([]);
     }
   }
 
