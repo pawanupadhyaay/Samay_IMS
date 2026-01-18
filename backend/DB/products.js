@@ -66,6 +66,22 @@ const productSchema = new mongoose.Schema(
         default: "",
       },
     },
+    images: {
+      type: [
+        {
+          url: {
+            type: String,
+            default: "",
+          },
+          altText: {
+            type: String,
+            default: "",
+          },
+        },
+      ],
+      default: [],
+    },
+    // Keep image field for backward compatibility (will be deprecated)
     image: {
       url: {
         type: String,

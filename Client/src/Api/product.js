@@ -1,6 +1,6 @@
 import axios from "axios";
 import toast from "react-hot-toast";
-import { addProduct } from "../Redux/index";
+import { addProduct, deleteOneProduct } from "../Redux/index";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -87,18 +87,23 @@ export function deleteProduct(id, dispatch, setLoading) {
 
   setLoading && setLoading(true);
 
+  // Optimistically delete from Redux store immediately
+  dispatch(deleteOneProduct(id));
+  setLoading && setLoading(false);
+
+  // Delete from backend in background (async - don't block UI)
   axios
     .delete(`${BASE_URL}/products/${id}`, {
       headers: { "x-auth-token": token },
     })
     .then(() => {
-      fetchProducts(dispatch, setLoading);
+      // Success - already removed from store optimistically
+      toast.success("Product deleted successfully");
     })
     .catch((error) => {
+      // Error - refetch to sync with server
       handleAxiosError(error, "Server error while deleting product");
-    })
-    .finally(() => {
-      setLoading && setLoading(false);
+      fetchProducts(dispatch, setLoading);
     });
 }
 
@@ -127,6 +132,11 @@ export async function updateProduct(id, data) {
       gender: data.gender,
       caseSize: data.caseSize,
     },
+    // Support multiple images
+    images: data.images && Array.isArray(data.images) 
+      ? data.images.filter(img => img && img.url && img.url.trim() !== "")
+      : [],
+    // Backward compatibility: single image
     image: {
       url: data.image?.url || "",
       altText: data.image?.altText || "",

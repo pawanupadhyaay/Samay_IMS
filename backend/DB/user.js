@@ -46,7 +46,8 @@ function validateUser(user) {
   const scheme = Joi.object({
     name: Joi.string().min(5).max(50).required(),
     email: Joi.string().min(5).max(255).email().required(),
-    password: Joi.string().alphanum().min(5).max(1024).required(),
+    // Allow special characters in password (removed .alphanum() restriction)
+    password: Joi.string().min(5).max(1024).required(),
   });
   // console.log(scheme.validate(user));
   return scheme.validate(user);

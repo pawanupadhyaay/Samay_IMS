@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import "./Dashboard.css";
 import Auth from "../Auth/Auth";
 import InputBox from "../../components/InputBox/InputBox";
@@ -31,46 +31,68 @@ function Dashboard() {
   // Fetch products on component mount
   useEffect(() => {
     fetchProducts(dispatch, setLoading);
-  }, []);
+  }, [dispatch]);
 
-  // Calculate statistics based on inventory data
-  useEffect(() => {
-    let filteredData = products?.filter((data) => {
+  // Memoize filtered products for search
+  const filteredData = useMemo(() => {
+    if (!products || products.length === 0) return [];
+    
+    return products.filter((data) => {
+      const searchLower = searchInput.toLowerCase();
       return (
-        (data?.brand?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.sku?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.category?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.description?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.caseMaterial?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.dialColor?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.waterResistance?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.warrantyPeriod?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.movement?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.gender?.toLowerCase().includes(searchInput.toLowerCase()) || "") ||
-        (data?.metafields?.caseSize?.toLowerCase().includes(searchInput?.toLowerCase()) || "")
+        (data?.brand?.toLowerCase().includes(searchLower) || "") ||
+        (data?.sku?.toLowerCase().includes(searchLower) || "") ||
+        (data?.category?.toLowerCase().includes(searchLower) || "") ||
+        (data?.description?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.caseMaterial?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.dialColor?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.waterResistance?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.warrantyPeriod?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.movement?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.gender?.toLowerCase().includes(searchLower) || "") ||
+        (data?.metafields?.caseSize?.toLowerCase().includes(searchLower) || "")
       );
     });
-    setSearchProducts(filteredData);
+  }, [searchInput, products]);
 
-    // Calculate total values based on the inventory and price schema:
-    const outOfStockCount = products?.filter(product => product?.inventory <= 0).length;
-    setTotalOutOfStock(outOfStockCount);
+  // Memoize statistics calculations
+  const statistics = useMemo(() => {
+    if (!products || products.length === 0) {
+      return {
+        total: 0,
+        storeValue: 0,
+        outOfStock: 0,
+        totalStock: 0,
+      };
+    }
 
-    const storeValue = products?.reduce((acc, obj) => {
-      // Ensure price and inventory are numbers before multiplying
+    const outOfStockCount = products.filter(product => (product?.inventory || 0) <= 0).length;
+    
+    const storeValue = products.reduce((acc, obj) => {
       const price = parseFloat(obj?.price) || 0;
       const inventory = parseInt(obj?.inventory, 10) || 0;
-      return acc + (price * inventory); // multiplying inventory with price to get total store value
+      return acc + (price * inventory);
     }, 0);
-    setTotalStoreValue(storeValue);
+    
+    const stockCount = products.reduce((sum, p) => sum + (parseInt(p.inventory) || 0), 0);
+    const total = products.length;
 
-    const stockCount = products?.reduce((sum, p) => sum + (parseInt(p.inventory) || 0), 0);
-    setTotalStock(stockCount);
+    return {
+      total,
+      storeValue,
+      outOfStock: outOfStockCount,
+      totalStock: stockCount,
+    };
+  }, [products]);
 
-
-    const total = products?.length;
-    setTotalProduct(total);
-  }, [searchInput, products]);
+  // Update state from memoized values
+  useEffect(() => {
+    setSearchProducts(filteredData);
+    setTotalProduct(statistics.total);
+    setTotalStoreValue(statistics.storeValue);
+    setTotalOutOfStock(statistics.outOfStock);
+    setTotalStock(statistics.totalStock);
+  }, [filteredData, statistics]);
 
   // Function to handle brand selection for export
 const handleBrandChange = (event) => {
@@ -107,7 +129,17 @@ const handleBrandChange = (event) => {
 
   return (
     <div>
-      {loading && <h3>Loading...</h3>}
+      {loading && products.length === 0 && (
+        <div className="flex items-center justify-center py-8">
+          <div className="flex flex-col items-center gap-3">
+            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="text-white text-sm">Loading products...</p>
+          </div>
+        </div>
+      )}
       <div className="grid xl:grid-cols-5 md:grid-cols-4 grid-cols-1 gap-3 mb-3">
         <div className="card flex flex-row gap-3">
           <div className="xl:w-20 md:w-20 w-10 xl:h-20 md:h-20 h-10">
@@ -184,7 +216,7 @@ const handleBrandChange = (event) => {
   key={selectedBrand} // 👈 forces re-render when brand changes
 />
 
-      </div>
+          </div>
     </div>
   );
 }

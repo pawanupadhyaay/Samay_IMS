@@ -41,12 +41,19 @@ function Products() {
   const [brands, setBrands] = useState([]);
 
   useEffect(() => {
-    fetchProducts(dispatch);
+    // Only fetch if products array is empty
+    if (!products || products.length === 0) {
+      fetchProducts(dispatch);
+    }
+  }, [dispatch]);
+
+  // Update brands when products change
+  useEffect(() => {
     if (products && products.length > 0) {
       const uniqueBrands = [...new Set(products.map(product => product.brand))].filter(Boolean);
       setBrands(uniqueBrands);
     }
-  }, [dispatch, products]);
+  }, [products]);
 
   const handleImageChange = (index, value) => {
     const updated = [...imageURLs];
@@ -109,6 +116,7 @@ function Products() {
           setGender("");
           setCaseSize("");
           setImageURLs([""]);
+          // Fetch products to update the store with new product
           fetchProducts(dispatch);
           return response;
         })

@@ -66,8 +66,23 @@ router.post("/", async (req, res) => {
       price,
       description,
       metafields,
-      image, // destructure image from body
+      image, // destructure image from body (backward compatibility)
+      images, // multiple images array
     } = req.body;
+
+    // Handle multiple images
+    let imagesArray = [];
+    if (images && Array.isArray(images) && images.length > 0) {
+      imagesArray = images
+        .filter(img => img && img.url && img.url.trim() !== "")
+        .map(img => ({
+          url: img.url.trim(),
+          altText: img.altText || "",
+        }));
+    } else if (image?.url) {
+      // Backward compatibility: convert single image to array
+      imagesArray = [{ url: image.url.trim(), altText: image.altText || "" }];
+    }
 
     const product = new Product({
       user: user || null,
@@ -86,8 +101,9 @@ router.post("/", async (req, res) => {
         gender: metafields?.gender || "",
         caseSize: metafields?.caseSize || "",
       },
+      images: imagesArray,
       image: {
-        url: image?.url || "", // ✅ supports plain URL from frontend
+        url: image?.url || "", // ✅ supports plain URL from frontend (backward compatibility)
         altText: image?.altText || "", // optional
       },
     });
@@ -104,7 +120,9 @@ router.post("/", async (req, res) => {
       ...Object.keys(product.metafields || {}).map((key) => `metafields.${key}`),
     ];
 
-    if (product.image?.url) {
+    if (product.images && product.images.length > 0) {
+      fieldsToLog.push(`images (${product.images.length} images)`);
+    } else if (product.image?.url) {
       fieldsToLog.push("image.url");
     }
 
@@ -176,18 +194,46 @@ router.put("/:id", upload.single("image"), async (req, res) => {
       metafields,
     };
 
-    // Add image field only if a new image is uploaded
-  if (req.file) {
-  updateFields.image = {
-    url: req.file.path,
-    altText: req.body?.altText || "",
-  };
-} else if (req.body.image?.url) {
-  updateFields.image = {
-    url: req.body.image.url,
-    altText: req.body.image.altText || "",
-  };
-}
+    // Handle multiple images (images array)
+    if (req.body.images && Array.isArray(req.body.images)) {
+      // Filter out empty images and ensure proper structure
+      updateFields.images = req.body.images
+        .filter(img => img && img.url && img.url.trim() !== "")
+        .map(img => ({
+          url: img.url.trim(),
+          altText: img.altText || "",
+        }));
+    } else if (req.body.images) {
+      // If images is not an array, try to parse it
+      try {
+        const parsedImages = typeof req.body.images === "string" 
+          ? JSON.parse(req.body.images) 
+          : req.body.images;
+        if (Array.isArray(parsedImages)) {
+          updateFields.images = parsedImages
+            .filter(img => img && img.url && img.url.trim() !== "")
+            .map(img => ({
+              url: img.url.trim(),
+              altText: img.altText || "",
+            }));
+        }
+      } catch (e) {
+        console.error("Error parsing images:", e);
+      }
+    }
+
+    // Backward compatibility: Handle single image field
+    if (req.file) {
+      updateFields.image = {
+        url: req.file.path,
+        altText: req.body?.altText || "",
+      };
+    } else if (req.body.image?.url) {
+      updateFields.image = {
+        url: req.body.image.url,
+        altText: req.body.image.altText || "",
+      };
+    }
 
 
     // Clean out undefined or empty fields
@@ -232,19 +278,22 @@ if (currentProduct.metafields && updatedProduct.metafields) {
   });
 }
 
-// Image fields
+// Images array fields
+if (JSON.stringify(currentProduct.images || []) !== JSON.stringify(updatedProduct.images || [])) {
+  modifiedFields.push(`images: ${(currentProduct.images || []).length} -> ${(updatedProduct.images || []).length} images`);
+}
+
+// Image fields (backward compatibility)
 if (
   currentProduct.image?.url !== updatedProduct.image?.url
 ) {
   modifiedFields.push(`image.url updated`);
-
 }
 
 if (
   currentProduct.image?.altText !== updatedProduct.image?.altText
 ) {
   modifiedFields.push(`image.altText updated`);
-
 }
 
 
