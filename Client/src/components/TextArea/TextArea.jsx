@@ -5,7 +5,7 @@ function TextArea({ name, placeholder, nLines, value, setValue, idName }) {
     <div>
       <label
         htmlFor="message"
-        class="block mb-2 text-sm font-medium  text-white"
+        className="block mb-2 text-sm font-medium  text-white"
       >
         {name}
       </label>

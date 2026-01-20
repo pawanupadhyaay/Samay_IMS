@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
+import Auth from "../Auth/Auth";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -12,14 +13,28 @@ function History() {
   const [filterUser, setFilterUser] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [pagination, setPagination] = useState({
+    totalPages: 1,
+    totalCount: 0,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+  const itemsPerPage = 100; // Match backend default limit
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    const abortController = new AbortController();
+    
+    // Fetch history with cancellation support
+    fetchHistory(currentPage, abortController.signal);
+    
+    // Cleanup: cancel request on unmount or page change
+    return () => {
+      abortController.abort();
+    };
+  }, [currentPage]);
 
-  async function fetchHistory() {
+  async function fetchHistory(page = 1, signal = null) {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
@@ -30,6 +45,11 @@ function History() {
 
       const response = await axios.get(`${BASE_URL}/products/history`, {
         headers: { "x-auth-token": token },
+        params: {
+          page: page,
+          limit: itemsPerPage,
+        },
+        signal: signal, // Add abort signal for request cancellation
       });
 
       // Check if response is successful
@@ -37,21 +57,42 @@ function History() {
         // Success response with data
         const historyData = response.data.data || [];
         setHistory(historyData);
+        
+        // Update pagination metadata if available
+        if (response.data.pagination) {
+          setPagination(response.data.pagination);
+        }
       } else {
         setHistory([]);
       }
     } catch (error) {
+      // Don't show error if request was cancelled
+      if (axios.isCancel && axios.isCancel(error)) {
+        console.log("History request cancelled:", error.message);
+        return;
+      }
+      
       console.error("Error fetching history:", error.response?.data || error.message);
+      
+      // Only show toast if not a cancellation
       if (error.response?.status === 404) {
         toast.error("History route not found");
       } else if (error.response?.status === 403) {
         toast.error("Access denied");
       } else if (error.response?.status === 401) {
         toast.error("Authentication failed");
-      } else {
+      } else if (error.code !== 'ERR_CANCELED') {
+        // Don't show error for cancelled requests
         toast.error("Failed to fetch history");
       }
+      
       setHistory([]);
+      setPagination({
+        totalPages: 1,
+        totalCount: 0,
+        hasNextPage: false,
+        hasPrevPage: false,
+      });
     } finally {
       setLoading(false);
     }
@@ -89,18 +130,17 @@ function History() {
     });
   }, [history, filterBrand, filterUser, searchInput]);
 
-  // Memoize pagination calculations
-  const totalPages = useMemo(() => Math.ceil(filteredHistory.length / itemsPerPage), [filteredHistory.length, itemsPerPage]);
+  // Use backend pagination - no need for frontend slicing since backend handles it
+  // But we still filter/search on client side for the current page
   const currentItems = useMemo(() => {
-    return filteredHistory.slice(
-      (currentPage - 1) * itemsPerPage,
-      currentPage * itemsPerPage
-    );
-  }, [filteredHistory, currentPage, itemsPerPage]);
+    return filteredHistory; // Already filtered and paginated by backend
+  }, [filteredHistory]);
 
   const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
       setCurrentPage(newPage);
+      // Scroll to top when page changes
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -216,22 +256,27 @@ function History() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {pagination.totalPages > 1 && (
         <div className="flex justify-center mt-6 gap-4 items-center text-white">
           <button
             onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-4 py-2 bg-blue-700 rounded disabled:opacity-50"
+            disabled={!pagination.hasPrevPage}
+            className="px-4 py-2 bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-800 transition-colors"
           >
             Prev
           </button>
           <span>
-            Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+            Page <strong>{currentPage}</strong> of <strong>{pagination.totalPages}</strong> 
+            {pagination.totalCount > 0 && (
+              <span className="text-gray-400 ml-2">
+                ({pagination.totalCount} total records)
+              </span>
+            )}
           </span>
           <button
             onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="px-4 py-2 bg-blue-700 rounded disabled:opacity-50"
+            disabled={!pagination.hasNextPage}
+            className="px-4 py-2 bg-blue-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-800 transition-colors"
           >
             Next
           </button>
@@ -243,4 +288,4 @@ function History() {
   );
 }
 
-export default History;
+export default Auth(History);

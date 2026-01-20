@@ -39,27 +39,31 @@ export function ViewProduct({ id }) {
   });
 
   function handleView() {
+    // Always get latest product from Redux when drawer opens
     const selectedProduct = products?.find((data) => data._id === id);
     if (selectedProduct) {
-      console.log("Selected Product from Database:", selectedProduct);
-      // Ensure images array is properly initialized
+      // Ensure images array is properly initialized with latest data
       const productWithImages = {
         ...selectedProduct,
-        images: Array.isArray(selectedProduct.images) ? selectedProduct.images : [],
+        images: Array.isArray(selectedProduct.images) 
+          ? selectedProduct.images.filter(img => img && img.url && img.url.trim() !== "")
+          : [],
       };
       setProduct(productWithImages);
     }
   }
 
-  // Update product when Redux products change (for optimistic updates)
+  // Update product when Redux products change (for real-time updates)
   React.useEffect(() => {
-    if (id && products) {
+    if (id && products && products.length > 0) {
       const selectedProduct = products.find((data) => data._id === id);
       if (selectedProduct) {
-        // Ensure images array is properly initialized
+        // Ensure images array is properly initialized with latest data
         const productWithImages = {
           ...selectedProduct,
-          images: Array.isArray(selectedProduct.images) ? selectedProduct.images : [],
+          images: Array.isArray(selectedProduct.images) 
+            ? selectedProduct.images.filter(img => img && img.url && img.url.trim() !== "")
+            : [],
         };
         setProduct(productWithImages);
       }
@@ -121,13 +125,20 @@ export function ViewProduct({ id }) {
                       <div className="flex flex-col gap-3 max-h-96 overflow-y-auto">
                         {product.images.map((img, index) => (
                           <img
-                            key={`img-${index}-${img.url || 'empty'}`}
-                            src={img.url}
+                            key={`img-${index}-${img.url || 'empty'}-${Date.now()}`} // Force re-render with timestamp
+                            src={`${img.url}?t=${Date.now()}`} // Cache busting for immediate update
                             alt={img.altText || `Product Image ${index + 1}`}
                             className="w-full h-auto border rounded"
                             onError={(e) => {
                               e.target.src = "https://via.placeholder.com/300?text=Image+Not+Found";
+                              e.target.onerror = null; // Prevent infinite loop
                             }}
+                            onLoad={(e) => {
+                              // Image loaded successfully
+                              e.target.style.opacity = "1";
+                            }}
+                            loading="lazy"
+                            style={{ opacity: 0, transition: 'opacity 0.3s' }} // Fade in effect
                           />
                         ))}
                       </div>
@@ -136,12 +147,19 @@ export function ViewProduct({ id }) {
                     <div className="flex flex-col gap-2">
                       <h3 className="text-lg font-bold mb-2">Product Image</h3>
                       <img
-                        src={typeof product.image === "string" ? product.image : product?.image?.url}
+                        key={`single-img-${product?.image?.url || product?.image}-${Date.now()}`}
+                        src={`${typeof product.image === "string" ? product.image : product?.image?.url}?t=${Date.now()}`}
                         alt={product?.image?.altText || "Product Image"}
                         className="w-full h-auto border rounded"
                         onError={(e) => {
                           e.target.src = "https://via.placeholder.com/300?text=Image+Not+Found";
+                          e.target.onerror = null; // Prevent infinite loop
                         }}
+                        onLoad={(e) => {
+                          e.target.style.opacity = "1";
+                        }}
+                        loading="lazy"
+                        style={{ opacity: 0, transition: 'opacity 0.3s' }}
                       />
                     </div>
                   ) : (

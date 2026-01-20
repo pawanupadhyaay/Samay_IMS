@@ -47,34 +47,58 @@ export async function createProduct(data) {
   }
 }
 
-// Function to fetch all products
-export function fetchProducts(dispatch, setLoading) {
+// Function to fetch all products with request cancellation support
+// If getAll=true, fetches all products (for statistics), otherwise uses default limit
+export function fetchProducts(dispatch, setLoading, signal = null, getAll = false) {
   const token = localStorage.getItem("token");
   if (!token) {
     toast.error("Authentication token is missing");
-    return;
+    return () => {}; // Return empty cleanup function
   }
 
   setLoading && setLoading(true);
 
+  // Create controller only if signal is not provided
+  const controller = signal ? null : new AbortController();
+  const abortSignal = signal || controller?.signal;
+
+  // Build query params
+  const params = {};
+  if (getAll) {
+    params.all = "true"; // Fetch all products for statistics
+  }
+
   axios
     .get(`${BASE_URL}/products`, {
       headers: { "x-auth-token": token },
+      params: params,
+      signal: abortSignal, // Add abort signal
     })
     .then((response) => {
       const productData = response?.data?.data;
-      console.log("checking fetch", productData);
       if (!productData) {
         throw new Error("Invalid response from server");
       }
       dispatch(addProduct(productData));
     })
     .catch((error) => {
+      // Don't show error if request was cancelled
+      if (axios.isCancel && axios.isCancel(error)) {
+        console.log("Request cancelled:", error.message);
+        return;
+      }
       handleAxiosError(error, "Server error while fetching products");
     })
     .finally(() => {
       setLoading && setLoading(false);
     });
+
+  // Return cleanup function to cancel request (only if we created the controller)
+  return () => {
+    if (controller && typeof controller.abort === 'function') {
+      controller.abort();
+    }
+  };
 }
 
 // Function to delete a product
@@ -174,6 +198,32 @@ export async function updateProduct(id, data) {
       console.error("Error setting up request:", error.message);
       throw error;
     }
+  }
+}
+
+// ✅ Fetch lightweight product stats (exact counts/sums, fast)
+export async function fetchProductStats() {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    throw new Error("Authentication token is missing");
+  }
+
+  try {
+    const response = await axios.get(`${BASE_URL}/products/stats`, {
+      headers: { "x-auth-token": token },
+    });
+
+    if (!response?.data?.success) {
+      throw new Error(response?.data?.message || "Failed to fetch stats");
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error("Fetch product stats error:", error);
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw new Error("Failed to fetch product stats");
   }
 }
 

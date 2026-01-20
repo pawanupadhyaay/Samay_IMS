@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import "./Dashboard.css";
 import Auth from "../Auth/Auth";
 import InputBox from "../../components/InputBox/InputBox";
-import { fetchProducts } from "../../Api/product";
+import { fetchProducts, fetchProductStats } from "../../Api/product";
 import { useDispatch, useSelector } from "react-redux";
 import Table from "../../components/Table/Table";
 import Footer from "../../components/Footer/Footer";
@@ -19,6 +19,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [searchProducts, setSearchProducts] = useState([]);
   const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearchInput, setDebouncedSearchInput] = useState("");
   const [totalProduct, setTotalProduct] = useState(0);
   const [totalStoreValue, setTotalStoreValue] = useState(0);
   const [totalOutOfStock, setTotalOutOfStock] = useState(0);
@@ -28,17 +29,57 @@ function Dashboard() {
 });
 
 
-  // Fetch products on component mount
+  // Fetch products for table (kept as-is; stats are fetched separately and exactly)
   useEffect(() => {
-    fetchProducts(dispatch, setLoading);
+    const abortController = new AbortController();
+    const cleanup = fetchProducts(dispatch, setLoading, abortController.signal, true); // keep current behavior
+    
+    // Cleanup: cancel request on unmount
+    return () => {
+      abortController.abort();
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
+      }
+    };
   }, [dispatch]);
 
-  // Memoize filtered products for search
+  // Fetch exact stats (fast, no need to download all products)
+  useEffect(() => {
+    let isMounted = true;
+    fetchProductStats()
+      .then((res) => {
+        if (!isMounted) return;
+        const s = res?.data || {};
+        setTotalProduct(s.totalProducts || 0);
+        setTotalStoreValue(s.totalStoreValue || 0);
+        setTotalOutOfStock(s.outOfStock || 0);
+        setTotalStock(s.totalStock || 0);
+      })
+      .catch((err) => {
+        console.error("Stats fetch failed:", err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchInput(searchInput);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Memoize filtered products for search (using debounced input)
   const filteredData = useMemo(() => {
     if (!products || products.length === 0) return [];
     
     return products.filter((data) => {
-      const searchLower = searchInput.toLowerCase();
+      const searchLower = debouncedSearchInput.toLowerCase();
+      if (!searchLower) return true; // Show all if no search
+      
       return (
         (data?.brand?.toLowerCase().includes(searchLower) || "") ||
         (data?.sku?.toLowerCase().includes(searchLower) || "") ||
@@ -53,46 +94,12 @@ function Dashboard() {
         (data?.metafields?.caseSize?.toLowerCase().includes(searchLower) || "")
       );
     });
-  }, [searchInput, products]);
+  }, [debouncedSearchInput, products]);
 
-  // Memoize statistics calculations
-  const statistics = useMemo(() => {
-    if (!products || products.length === 0) {
-      return {
-        total: 0,
-        storeValue: 0,
-        outOfStock: 0,
-        totalStock: 0,
-      };
-    }
-
-    const outOfStockCount = products.filter(product => (product?.inventory || 0) <= 0).length;
-    
-    const storeValue = products.reduce((acc, obj) => {
-      const price = parseFloat(obj?.price) || 0;
-      const inventory = parseInt(obj?.inventory, 10) || 0;
-      return acc + (price * inventory);
-    }, 0);
-    
-    const stockCount = products.reduce((sum, p) => sum + (parseInt(p.inventory) || 0), 0);
-    const total = products.length;
-
-    return {
-      total,
-      storeValue,
-      outOfStock: outOfStockCount,
-      totalStock: stockCount,
-    };
-  }, [products]);
-
-  // Update state from memoized values
+  // Update table state from memoized filtered values
   useEffect(() => {
     setSearchProducts(filteredData);
-    setTotalProduct(statistics.total);
-    setTotalStoreValue(statistics.storeValue);
-    setTotalOutOfStock(statistics.outOfStock);
-    setTotalStock(statistics.totalStock);
-  }, [filteredData, statistics]);
+  }, [filteredData]);
 
   // Function to handle brand selection for export
 const handleBrandChange = (event) => {
@@ -212,7 +219,7 @@ const handleBrandChange = (event) => {
       {/* Products Table */}
       <div className="card">
         <Table
-  product={searchInput ? searchProducts : filteredProducts}
+  product={debouncedSearchInput ? searchProducts : filteredProducts}
   selectedBrand={selectedBrand}
   key={selectedBrand} // 👈 forces re-render when brand changes
 />

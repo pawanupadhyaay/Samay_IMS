@@ -13,7 +13,7 @@ import toast from "react-hot-toast";
 import { fetchProducts, updateProduct } from "@/Api/product";
 import { useDispatch, useSelector } from "react-redux";
 import { updateProductInStore } from "@/Redux/index";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import TextArea from "../TextArea/TextArea";
 
@@ -54,6 +54,7 @@ export function EditProduct({ id }) {
   };
 
   const handleEdit = () => {
+    // Always get the latest product from Redux store
     const product = products.find((p) => p?._id === id);
     if (product) {
       // ✅ Normalize image field if it's in string format
@@ -63,18 +64,21 @@ export function EditProduct({ id }) {
           : product.image || { url: "", altText: "" };
 
       // ✅ Handle multiple images - use images array if available, otherwise convert single image
+      // Filter out empty URLs to ensure only valid images are shown
       let imagesArray = [];
       if (product.images && Array.isArray(product.images) && product.images.length > 0) {
-        imagesArray = [...product.images]; // Create a copy to avoid reference issues
-      } else if (imageData.url) {
+        imagesArray = product.images
+          .filter(img => img && img.url && img.url.trim() !== "")
+          .map(img => ({ ...img })); // Create a copy to avoid reference issues
+      } else if (imageData.url && imageData.url.trim() !== "") {
         // Convert single image to array for backward compatibility
-        imagesArray = [{ url: imageData.url, altText: imageData.altText || "" }];
+        imagesArray = [{ url: imageData.url.trim(), altText: imageData.altText || "" }];
       }
       // If no images, keep empty array (imagesArray is already [])
 
       setProductData({
         ...product,
-        images: imagesArray, // Always ensure it's an array
+        images: imagesArray, // Always ensure it's an array with valid URLs only
         image: imageData,
         caseMaterial: product.metafields?.caseMaterial || product.caseMaterial || "",
         dialColor: product.metafields?.dialColor || product.dialColor || "",
@@ -128,30 +132,30 @@ export function EditProduct({ id }) {
 
     setIsSaving(true);
     try {
-      // Close dialog immediately for better UX
+      // Close dialog immediately for better UX (non-blocking)
       setIsOpen(false);
-      toast.success("Product updated successfully!");
-      
-      // Update product in background (non-blocking)
-      updateProduct(id, updatedData)
-        .then((response) => {
-          if (response && response.success) {
-            // Always refetch products to ensure complete, accurate data (in background)
-            fetchProducts(dispatch);
-          } else {
-            // Refetch to sync if response unexpected
-            fetchProducts(dispatch);
-          }
-        })
-        .catch((error) => {
-          console.error("Error updating product:", error);
-          // Refetch to sync even on error
-          fetchProducts(dispatch);
-          toast.error(error.message || error.response?.data?.details || "Failed to update product");
-        })
-        .finally(() => {
-          setIsSaving(false);
-        });
+
+      // Optimistically update Redux immediately so ViewProduct shows latest images right away
+      dispatch(updateProductInStore(id, updatedData));
+
+      const toastId = toast.loading("Saving changes...");
+
+      // Persist update to backend (async)
+      const response = await updateProduct(id, updatedData);
+
+      if (response && response.success) {
+        // If backend returns updated product, prefer it (canonical)
+        if (response.data) {
+          dispatch(updateProductInStore(id, response.data));
+        }
+        toast.success("Product updated successfully!", { id: toastId });
+      } else {
+        // Unexpected response - refetch to sync
+        toast.error("Update failed. Syncing data...", { id: toastId });
+        fetchProducts(dispatch);
+      }
+
+      setIsSaving(false);
     } catch (error) {
       console.error("Error updating product:", error);
       toast.error(error.message || error.response?.data?.details || "Failed to update product");
@@ -224,21 +228,24 @@ export function EditProduct({ id }) {
                 <div className="space-y-2 sm:space-y-3">
                   <InputBox
                     name="Brand"
-                    value={productData?.brand}
+                    value={productData?.brand || ""}
                     setValue={(value) => handleChange("brand", value)}
                     readOnly
+                    idName="editBrand"
                   />
                   <InputBox
                     name="SKU"
-                    value={productData?.sku}
+                    value={productData?.sku || ""}
                     setValue={(value) => handleChange("sku", value)}
                     readOnly
+                    idName="editSku"
                   />
                   <InputBox
                     name="Category"
-                    value={productData?.category}
+                    value={productData?.category || ""}
                     setValue={(value) => handleChange("category", value)}
                     readOnly
+                    idName="editCategory"
                   />
 
                   {/* Inventory Control */}
@@ -271,9 +278,10 @@ export function EditProduct({ id }) {
 
                   <InputBox
                     name="Price (₹)"
-                    value={productData?.price}
+                    value={productData?.price?.toString() || "0"}
                     setValue={(value) => handleChange("price", value)}
                     type="number"
+                    idName="editPrice"
                   />
                 </div>
               </div>
@@ -291,6 +299,7 @@ export function EditProduct({ id }) {
                   nLines={3}
                   value={productData?.description || ""}
                   setValue={(value) => handleChange("description", value)}
+                  idName="editDescription"
                 />
               </div>
             </div>
@@ -329,16 +338,24 @@ export function EditProduct({ id }) {
                                 images: updatedImages,
                               }));
                             }}
+                            idName={`editImage${index}`}
                           />
                           {img.url && (
                             <div className="relative w-full">
                               <img
-                                src={img.url}
+                                key={`preview-${index}-${img.url}`} // Force re-render on URL change
+                                src={`${img.url}?t=${Date.now()}`} // Cache busting for immediate update
                                 alt={img.altText || `Product Image ${index + 1}`}
                                 className="w-full sm:max-w-xs h-auto border-2 border-gray-700 rounded-lg mt-2"
                                 onError={(e) => {
-                              e.target.style.display = "none";
-                            }}
+                                  e.target.src = "https://via.placeholder.com/300?text=Image+Not+Found";
+                                  e.target.onerror = null; // Prevent infinite loop
+                                }}
+                                onLoad={(e) => {
+                                  // Image loaded successfully
+                                  e.target.style.display = "block";
+                                }}
+                                loading="lazy"
                               />
                             </div>
                           )}
@@ -408,38 +425,45 @@ export function EditProduct({ id }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                   <InputBox
                     name="Case Material"
-                    value={productData?.caseMaterial}
+                    value={productData?.caseMaterial || ""}
                     setValue={(value) => handleChange("caseMaterial", value)}
+                    idName="editCaseMaterial"
                   />
                   <InputBox
                     name="Dial Color"
-                    value={productData?.dialColor}
+                    value={productData?.dialColor || ""}
                     setValue={(value) => handleChange("dialColor", value)}
+                    idName="editDialColor"
                   />
                   <InputBox
                     name="Water Resistance"
-                    value={productData?.waterResistance}
+                    value={productData?.waterResistance || ""}
                     setValue={(value) => handleChange("waterResistance", value)}
+                    idName="editWaterResistance"
                   />
                   <InputBox
                     name="Warranty Period"
-                    value={productData?.warrantyPeriod}
+                    value={productData?.warrantyPeriod || ""}
                     setValue={(value) => handleChange("warrantyPeriod", value)}
+                    idName="editWarrantyPeriod"
                   />
                   <InputBox
                     name="Movement"
-                    value={productData?.movement}
+                    value={productData?.movement || ""}
                     setValue={(value) => handleChange("movement", value)}
+                    idName="editMovement"
                   />
                   <InputBox
                     name="Gender"
-                    value={productData?.gender}
+                    value={productData?.gender || ""}
                     setValue={(value) => handleChange("gender", value)}
+                    idName="editGender"
                   />
                   <InputBox
                     name="Case Size"
-                    value={productData?.caseSize}
+                    value={productData?.caseSize?.toString() || ""}
                     setValue={(value) => handleChange("caseSize", value)}
+                    idName="editCaseSize"
                   />
                 </div>
               </div>

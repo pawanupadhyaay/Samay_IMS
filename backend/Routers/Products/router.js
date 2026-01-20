@@ -19,23 +19,135 @@ const handleSuccess = (res, statusCode, data) => {
   return res.status(statusCode).json({ success: true, data });
 };
 
-// Get all products
+// Get all products with pagination (backward compatible)
 router.get("/", async (req, res) => {
   
   try {
-    // Use lean() for faster queries - returns plain JS objects
-    // Only select fields we need (excluding user field)
-    const data = await Product.find({})
-      .select({ user: 0 })
-      .lean(); // Faster - returns plain JavaScript objects
+    // Check if all products are requested (for statistics)
+    const getAll = req.query.all === "true" || req.query.all === "1";
+    
+    // Pagination parameters (optional for backward compatibility)
+    const page = parseInt(req.query.page);
+    const limit = parseInt(req.query.limit);
+    const skip = page ? (page - 1) * limit : 0;
+    const maxLimit = 1000; // Maximum limit for safety
 
-    if (!data || data.length === 0) {
-      return handleSuccess(res, 200, []);
+    // If all=true, return all products (for statistics)
+    if (getAll) {
+      const data = await Product.find({})
+        .select({ user: 0 })
+        .lean();
+      
+      return handleSuccess(res, 200, data || []);
     }
 
-    return handleSuccess(res, 200, data);
+    // If pagination params provided, use pagination
+    if (page && limit) {
+      const actualLimit = Math.min(limit, maxLimit);
+      
+      // Calculate total count for pagination metadata
+      const totalCount = await Product.countDocuments({});
+      
+      // Use lean() for faster queries - returns plain JS objects
+      const data = await Product.find({})
+        .select({ user: 0 })
+        .skip(skip)
+        .limit(actualLimit)
+        .lean();
+
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / actualLimit);
+      const hasNextPage = page < totalPages;
+      const hasPrevPage = page > 1;
+
+      return res.status(200).json({
+        success: true,
+        data: data || [],
+        pagination: {
+          currentPage: page,
+          totalPages: totalPages,
+          totalCount: totalCount,
+          limit: actualLimit,
+          hasNextPage: hasNextPage,
+          hasPrevPage: hasPrevPage,
+        },
+      });
+    } else {
+      // Backward compatibility: Return all products but limit to 1000 for safety
+      const data = await Product.find({})
+        .select({ user: 0 })
+        .limit(maxLimit)
+        .lean();
+
+      return handleSuccess(res, 200, data || []);
+    }
   } catch (error) {
     console.error("Error fetching products:", error);
+    return handleError(res, 500, "Internal Server Error", error.message);
+  }
+});
+
+// ✅ Lightweight stats endpoint (fast, exact, no need to fetch all products)
+router.get("/stats", async (req, res) => {
+  try {
+    const [result] = await Product.aggregate([
+      // Ensure inventory/price are treated as numbers even if stored as strings
+      {
+        $addFields: {
+          _invNum: {
+            $convert: {
+              input: "$inventory",
+              to: "double",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+          _priceNum: {
+            $convert: {
+              input: "$price",
+              to: "double",
+              onError: 0,
+              onNull: 0,
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          totalStock: { $sum: "$_invNum" },
+          totalStoreValue: {
+            $sum: {
+              $multiply: ["$_invNum", "$_priceNum"],
+            },
+          },
+          outOfStock: {
+            $sum: {
+              $cond: [{ $lte: ["$_invNum", 0] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          totalProducts: 1,
+          totalStock: 1,
+          totalStoreValue: 1,
+          outOfStock: 1,
+        },
+      },
+    ]);
+
+    return handleSuccess(res, 200, result || {
+      totalProducts: 0,
+      totalStock: 0,
+      totalStoreValue: 0,
+      outOfStock: 0,
+    });
+  } catch (error) {
+    console.error("Error fetching product stats:", error);
     return handleError(res, 500, "Internal Server Error", error.message);
   }
 });
